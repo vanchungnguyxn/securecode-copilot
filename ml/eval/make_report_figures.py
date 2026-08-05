@@ -21,20 +21,20 @@ OUT.mkdir(parents=True, exist_ok=True)
 sys.path.insert(0, str(ROOT / "backend"))
 
 C = {
-    "ink": "#1B2A33",
-    "muted": "#5B6B73",
-    "rule": "#3D5A6C",
-    "ml": "#0E7C6B",
-    "hybrid": "#C45C26",
-    "bandit": "#7A6A4F",
-    "semgrep": "#5C6B8A",
-    "good": "#1F6B4A",
-    "warn": "#B45309",
-    "bad": "#9B2C2C",
-    "soft": "#F4F1EC",
+    "ink": "#17212B",
+    "muted": "#5A6A75",
+    "rule": "#2F5D7C",
+    "ml": "#0F7A6B",
+    "hybrid": "#B8562A",
+    "bandit": "#6E6554",
+    "semgrep": "#4A5D7A",
+    "good": "#1B6B4A",
+    "warn": "#A65D12",
+    "bad": "#8F2F2F",
+    "soft": "#F3F5F7",
     "card": "#FFFFFF",
-    "grid": "#D6D1C9",
-    "med": "#C9A227",
+    "grid": "#D3D9DE",
+    "med": "#B8962E",
 }
 
 
