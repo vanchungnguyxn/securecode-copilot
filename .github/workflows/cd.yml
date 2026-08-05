@@ -1,0 +1,286 @@
+name: SecureCode Copilot CD
+
+# Continuous Delivery: build/push GHCR → VPS compose deploy → smoke → rollback.
+# Setup: docs/CD.md
+
+on:
+  push:
+    branches: [main, master]
+    paths-ignore:
+      - "**.md"
+      - "ml/eval/reports/**"
+      - "docs/**"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment"
+        required: true
+        default: staging
+        type: choice
+        options: [staging, production]
+      action:
+        description: "deploy | rollback"
+        required: true
+        default: deploy
+        type: choice
+        options: [deploy, rollback]
+      image_tag:
+        description: "Optional image tag override (default: sha)"
+        required: false
+        default: ""
+
+concurrency:
+  group: cd-${{ github.event.inputs.environment || 'staging' }}
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  build-and-push:
+    if: ${{ github.event_name == 'push' || github.event.inputs.action == 'deploy' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+      backend_image: ${{ steps.meta.outputs.backend }}
+      frontend_image: ${{ steps.meta.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve tags
+        id: meta
+        run: |
+          OWNER=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')
+          if [ -n "${{ github.event.inputs.image_tag }}" ]; then
+            TAG="${{ github.event.inputs.image_tag }}"
+          else
+            TAG="sha-${GITHUB_SHA::7}"
+          fi
+          BACKEND="${{ env.REGISTRY }}/${OWNER}/securecode-copilot-backend"
+          FRONTEND="${{ env.REGISTRY }}/${OWNER}/securecode-copilot-frontend"
+          {
+            echo "tag=${TAG}"
+            echo "backend=${BACKEND}"
+            echo "frontend=${FRONTEND}"
+          } >> "$GITHUB_OUTPUT"
+          echo "Resolved ${BACKEND}:${TAG}"
+          echo "Resolved ${FRONTEND}:${TAG}"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & push backend
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: backend/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.backend }}:${{ steps.meta.outputs.tag }}
+            ${{ steps.meta.outputs.backend }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build & push frontend
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          file: frontend/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.frontend }}:${{ steps.meta.outputs.tag }}
+            ${{ steps.meta.outputs.frontend }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    needs: [build-and-push]
+    if: |
+      always() &&
+      needs.build-and-push.result == 'success' &&
+      (github.event_name == 'push' || github.event.inputs.action == 'deploy')
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || 'staging' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check deploy secrets
+        id: gate
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          if [ -z "$DEPLOY_HOST" ] || [ -z "$DEPLOY_USER" ] || [ -z "$DEPLOY_SSH_KEY" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "DEPLOY_* secrets missing — skipping remote deploy (images already in GHCR)."
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Setup SSH
+        if: steps.gate.outputs.skip != 'true'
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Sync compose + deploy scripts
+        if: steps.gate.outputs.skip != 'true'
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        run: |
+          PATH_REMOTE="${DEPLOY_PATH:-~/securecode-copilot}"
+          ssh -o StrictHostKeyChecking=accept-new \
+            "${DEPLOY_USER}@${DEPLOY_HOST}" \
+            "mkdir -p ${PATH_REMOTE}/deploy ${PATH_REMOTE}/releases"
+          scp docker-compose.prod.yml \
+            "${DEPLOY_USER}@${DEPLOY_HOST}:${PATH_REMOTE}/docker-compose.prod.yml"
+          scp deploy/deploy.sh \
+            "${DEPLOY_USER}@${DEPLOY_HOST}:${PATH_REMOTE}/deploy/deploy.sh"
+          ssh "${DEPLOY_USER}@${DEPLOY_HOST}" \
+            "chmod +x ${PATH_REMOTE}/deploy/deploy.sh"
+
+      - name: Deploy (pull + up)
+        if: steps.gate.outputs.skip != 'true'
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          TAG: ${{ needs.build-and-push.outputs.tag }}
+          BACKEND_IMAGE: ${{ needs.build-and-push.outputs.backend_image }}:${{ needs.build-and-push.outputs.tag }}
+          FRONTEND_IMAGE: ${{ needs.build-and-push.outputs.frontend_image }}:${{ needs.build-and-push.outputs.tag }}
+          LLM_PROVIDER: ${{ secrets.LLM_PROVIDER }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          CORS_ORIGINS: ${{ secrets.CORS_ORIGINS }}
+          APP_URL: ${{ secrets.APP_URL }}
+          HTTP_PORT: ${{ secrets.HTTP_PORT }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_USER: ${{ github.actor }}
+        run: |
+          PATH_REMOTE="${DEPLOY_PATH:-~/securecode-copilot}"
+          ssh "${DEPLOY_USER}@${DEPLOY_HOST}" \
+            env BACKEND_IMAGE="$BACKEND_IMAGE" \
+                FRONTEND_IMAGE="$FRONTEND_IMAGE" \
+                RELEASE_TAG="$TAG" \
+                LLM_PROVIDER="${LLM_PROVIDER:-heuristic}" \
+                JWT_SECRET="${JWT_SECRET:-change-me-in-production-min-32-chars}" \
+                CORS_ORIGINS="${CORS_ORIGINS:-http://localhost}" \
+                APP_URL="${APP_URL:-http://localhost}" \
+                HTTP_PORT="${HTTP_PORT:-80}" \
+                GHCR_TOKEN="$GHCR_TOKEN" \
+                GHCR_USER="$GHCR_USER" \
+                PATH_REMOTE="$PATH_REMOTE" \
+                bash -s <<'REMOTE'
+          set -euo pipefail
+          cd "$PATH_REMOTE"
+          echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin || true
+          bash deploy/deploy.sh up
+          REMOTE
+
+      - name: Post-deploy smoke
+        if: steps.gate.outputs.skip != 'true'
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          SMOKE_BASE_URL: ${{ secrets.SMOKE_BASE_URL }}
+        run: |
+          PATH_REMOTE="${DEPLOY_PATH:-~/securecode-copilot}"
+          if [ -n "${SMOKE_BASE_URL:-}" ]; then
+            for i in $(seq 1 20); do
+              if curl -fsS "${SMOKE_BASE_URL}/api/v1/health" | grep -q '"status"'; then
+                echo "External smoke OK"
+                curl -fsS -o /dev/null -w "UI %{http_code}\n" "${SMOKE_BASE_URL}/"
+                exit 0
+              fi
+              sleep 3
+            done
+            echo "External smoke failed" >&2
+            exit 1
+          fi
+          ssh "${DEPLOY_USER}@${DEPLOY_HOST}" \
+            "cd ${PATH_REMOTE} && bash deploy/deploy.sh smoke"
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### CD deploy"
+            echo "- Environment: \`${{ github.event.inputs.environment || 'staging' }}\`"
+            echo "- Tag: \`${{ needs.build-and-push.outputs.tag }}\`"
+            echo "- Backend: \`${{ needs.build-and-push.outputs.backend_image }}:${{ needs.build-and-push.outputs.tag }}\`"
+            echo "- Frontend: \`${{ needs.build-and-push.outputs.frontend_image }}:${{ needs.build-and-push.outputs.tag }}\`"
+            echo "- Remote skip: \`${{ steps.gate.outputs.skip }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  rollback:
+    if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'rollback' }}
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || 'staging' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check deploy secrets
+        id: gate
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          if [ -z "$DEPLOY_HOST" ] || [ -z "$DEPLOY_USER" ] || [ -z "$DEPLOY_SSH_KEY" ]; then
+            echo "DEPLOY_* secrets required for rollback" >&2
+            exit 1
+          fi
+
+      - name: Setup SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Sync deploy script
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        run: |
+          PATH_REMOTE="${DEPLOY_PATH:-~/securecode-copilot}"
+          scp deploy/deploy.sh \
+            "${DEPLOY_USER}@${DEPLOY_HOST}:${PATH_REMOTE}/deploy/deploy.sh"
+          ssh "${DEPLOY_USER}@${DEPLOY_HOST}" "chmod +x ${PATH_REMOTE}/deploy/deploy.sh"
+
+      - name: Rollback
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          SMOKE_BASE_URL: ${{ secrets.SMOKE_BASE_URL }}
+        run: |
+          PATH_REMOTE="${DEPLOY_PATH:-~/securecode-copilot}"
+          ssh "${DEPLOY_USER}@${DEPLOY_HOST}" \
+            "cd ${PATH_REMOTE} && bash deploy/deploy.sh rollback"
+          if [ -n "${SMOKE_BASE_URL:-}" ]; then
+            curl -fsS "${SMOKE_BASE_URL}/api/v1/health"
+          else
+            ssh "${DEPLOY_USER}@${DEPLOY_HOST}" \
+              "cd ${PATH_REMOTE} && bash deploy/deploy.sh smoke"
+          fi

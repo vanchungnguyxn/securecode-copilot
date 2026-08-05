@@ -19,7 +19,7 @@
 1. **Phân tích tĩnh dựa trên rule** (map CWE / OWASP, đa ngôn ngữ, giải thích được),
 2. **Bộ phân loại CodeBERT fine-tune** để ước lượng xác suất lỗ hổng và **giảm báo sai (false positive)**,
 3. **CodeT5-LoRA** để sinh giải thích ngữ cảnh và gợi ý sửa,
-4. **Tích hợp CI** qua GitHub Action, xuất **SARIF**.
+4. **Tích hợp CI/CD** qua GitHub Actions (SARIF gate + deploy GHCR/VPS).
 
 Hệ thống phục vụ mục tiêu đồ án tốt nghiệp: chứng minh pipeline *detect → explain → fix → gate CI* chạy được trên phần cứng phổ thông (RTX 3050 4GB).
 
@@ -28,7 +28,7 @@ Hệ thống phục vụ mục tiêu đồ án tốt nghiệp: chứng minh pipe
 | Ngôn ngữ | Python, JavaScript/TypeScript, Java, C/C++, C#, PHP |
 | Chế độ detect | Rule-only · Hybrid (product) · ML discovery (tuỳ chọn) |
 | LLM | `heuristic` · `local` (CodeT5-LoRA) · `openai` |
-| CI | GitHub Actions + `action/scan.py` → SARIF |
+| CI / CD | GitHub Actions + SARIF; GHCR + VPS Compose ([`docs/CD.md`](docs/CD.md)) |
 
 ---
 
@@ -142,18 +142,25 @@ Bảng tóm tắt baseline (Python labeled pairs):
 | Bandit | 0.628 | 0.758 | 0.687 | 0.450 |
 | Semgrep | 0.938 | 0.125 | 0.221 | 0.008 |
 
-Chi tiết: [`ml/eval/reports/baseline_compare.md`](ml/eval/reports/baseline_compare.md) · [`ml/eval/reports/bench_compare.md`](ml/eval/reports/bench_compare.md).
+Chi tiết: [`ml/eval/reports/baseline_compare.md`](ml/eval/reports/baseline_compare.md) · [`ml/eval/reports/bench_compare.md`](ml/eval/reports/bench_compare.md) · **[per-language multilingual](ml/eval/reports/bench_multilingual.md)**.
 
-### 4.4. CodeT5 — chất lượng gợi ý sửa (soft-match)
+### 4.4. CodeT5 — chất lượng gợi ý sửa
 
-Soft-match tăng từ giai đoạn mixed SFT ban đầu lên **≈ 63.3%** sau khi bổ sung patch CVEFixes thật (eval *n* = 60).
+> **Lưu ý phương pháp:** số liệu soft-match (~63%, n≈60 trên `sft_pairs`) chỉ mang tính tham chiếu lịch sử — tiêu chí dễ đạt và dữ liệu gần phân họ train. **Không dùng làm claim chính.**
+
+Đánh giá khuyến nghị (held-out): Exact match · CodeBLEU · Compile · **Unit-test** · **Security-test** · Functional · Human rubric — xem [`ml/eval/FIX_EVAL.md`](ml/eval/FIX_EVAL.md).
+
+```powershell
+.\.venv-ml\Scripts\python.exe ml\datasets\build_heldout_fix_eval.py
+.\.venv-ml\Scripts\python.exe ml\eval\eval_fix_heldout.py --provider local
+```
 
 <p align="center">
-  <img src="ml/eval/reports/figures/04_codet5_fix_softmatch.png" alt="CodeT5 soft-match" width="720"/>
+  <img src="ml/eval/reports/figures/04_codet5_fix_softmatch.png" alt="CodeT5 soft-match (legacy)" width="720"/>
 </p>
 
 <p align="center">
-  <em>Hình 9. Tiến triển soft-match của module fix CodeT5-LoRA.</em>
+  <em>Hình 9. Soft-match legacy (để so sánh giai đoạn train) — bổ sung bằng held-out suite.</em>
 </p>
 
 ### 4.5. Bằng chứng quét repo demo
@@ -176,22 +183,31 @@ Soft-match tăng từ giai đoạn mixed SFT ban đầu lên **≈ 63.3%** sau k
 - (Tuỳ chọn) CUDA cho inference CodeBERT / CodeT5  
 - Docker (tuỳ chọn)
 
-### Backend
+### Backend (SaaS MVP)
 
 ```bash
 cd backend
-python -m venv .venv
-# Windows: .venv\Scripts\activate
+# khuyến nghị: dùng .venv ở root hoặc tạo mới
 pip install -r requirements.txt
-copy .env.example .env   # chỉnh LLM_PROVIDER nếu cần
+copy .env.example .env   # DATABASE_URL, JWT_SECRET, LLM_PROVIDER
+python -m app.db.seed    # plans + demo users (cũng chạy lúc startup)
 uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
 API docs: http://127.0.0.1:8000/docs
 
-> Recommendation trên máy đã fine-tune: đặt `LLM_PROVIDER=local` và chạy backend bằng **`.venv-ml`** (có `torch` / `peft`) để CodeT5 thực sự được nạp.
+**Tài khoản demo (sau seed):**
 
-### Frontend
+| Email | Mật khẩu | Gói / role |
+|-------|----------|------------|
+| `admin@securecode.dev` | `Admin123!` | Pro · SUPER_ADMIN |
+| `free@securecode.dev` | `Free1234!` | Free |
+| `pro@securecode.dev` | `Pro12345!` | Pro |
+| `team@securecode.dev` | `Team1234!` | Team |
+
+> Recommendation trên máy đã fine-tune: đặt `LLM_PROVIDER=local` và chạy backend bằng **`.venv-ml`** (có `torch` / `peft`) để CodeT5 thực sự được nạp. Trên Windows tránh `--reload` nếu muốn giữ cùng interpreter.
+
+### Frontend (React Router + Tailwind)
 
 ```bash
 cd frontend
@@ -199,7 +215,7 @@ npm install
 npm run dev
 ```
 
-UI: http://127.0.0.1:5173
+UI: http://127.0.0.1:5173 — landing / pricing / auth / dashboard / admin.
 
 ### Docker Compose
 
@@ -223,9 +239,42 @@ Tái tạo biểu đồ luận văn:
 
 ---
 
-## 6. CI / GitHub Actions
+## 5b. SaaS MVP — kiến trúc & trạng thái
 
-Workflow: [`.github/workflows/securecode-scan.yml`](.github/workflows/securecode-scan.yml)
+```
+React (Vite + Tailwind + Router)
+  │ JWT Bearer
+  ▼
+FastAPI
+  ├─ Auth / JWT / quota (SQLAlchemy · SQLite hoặc Postgres)
+  ├─ Analyses → CopilotService.scan (giữ rule + CodeBERT + CodeT5)
+  ├─ Billing mock (checkout → mock-pay)
+  └─ Admin (users · payments · analyses · audit)
+```
+
+| Đã có | Đang mock / sau MVP |
+|-------|---------------------|
+| Register/login, JWT, forgot-password stub | Stripe webhook thật, OAuth Google/GitHub |
+| Quota theo gói + 402 `QUOTA_EXCEEDED` | Team invite đầy đủ, 2FA, Enterprise SSO |
+| History analyses, feedback / false-positive | PDF export thật |
+| Checkout mock + nâng gói server-side | GitHub/GitLab app integrations |
+| Admin lock/quota/audit | — |
+| Dark mode · Be Vietnam Pro · JetBrains Mono | — |
+
+Legacy endpoints `/scan`, `/explain`, `/fix`, `/apply-fix`, `/scan/repo*` **vẫn giữ** (CI / demo mở). Luồng SaaS analyze: `POST /api/v1/analyses` (auth + quota).
+
+Migrate: MVP dùng `init_db()` / `create_all` lúc startup; Alembic baseline nằm ở `backend/alembic/` cho Postgres sau này.
+
+Kiểm thử:
+
+```bash
+cd backend && pytest tests/test_api.py tests/test_saas.py -q
+cd frontend && npm run build
+```
+
+## 6. CI / CD (GitHub Actions)
+
+**CI** — [`.github/workflows/securecode-scan.yml`](.github/workflows/securecode-scan.yml)
 
 | Job | Việc làm |
 |-----|----------|
@@ -233,6 +282,8 @@ Workflow: [`.github/workflows/securecode-scan.yml`](.github/workflows/securecode
 | `security-scan-rule` | Quét `examples/*` bằng rule, xuất SARIF |
 | `frontend-build` | `npm run build` |
 | `security-scan-hybrid` | Chỉ khi chạy tay (`workflow_dispatch`, mode `hybrid`) |
+
+**CD** — [`.github/workflows/cd.yml`](.github/workflows/cd.yml): build/push GHCR → deploy VPS (Compose) → smoke `/api/v1/health` → rollback. Chi tiết secrets & VPS: [`docs/CD.md`](docs/CD.md).
 
 Composite action: [`action/`](action/). Repo demo: [vanchungnguyxn/securecode-copilot](https://github.com/vanchungnguyxn/securecode-copilot).
 
@@ -244,16 +295,17 @@ Composite action: [`action/`](action/). Repo demo: [vanchungnguyxn/securecode-co
 
 ```
 securecode-copilot/
-├── backend/                 # FastAPI: scan · explain · fix · repo
-├── frontend/                # React + Vite workspace
-├── ml/
+├── backend/                 # FastAPI: auth · analyses · billing · scan AI
+├── frontend/                # React + Vite SaaS (Router · Tailwind)├── ml/
 │   ├── datasets/            # Chuẩn bị dữ liệu + mẫu SFT
 │   ├── training/            # train_detector · train_codet5_lora
 │   ├── eval/reports/        # Số liệu + figures luận văn
 │   └── inference/checkpoints/  # (không commit) model local
 ├── action/                  # GitHub Action composite
+├── deploy/                  # Script deploy / rollback VPS
+├── docker-compose.prod.yml  # Stack production (GHCR images)
 ├── examples/                # Repo demo có lỗ hổng / gần an toàn
-├── docs/                    # Kiến trúc · kịch bản demo
+├── docs/                    # Kiến trúc · kịch bản demo · CD
 └── scripts/                 # train_local · demo_scan
 ```
 
@@ -266,7 +318,10 @@ securecode-copilot/
 | `USE_ML_DISCOVERY` | Bật discovery thuần ML (mặc định tắt) |
 | `OPENAI_API_KEY` | Chỉ khi `openai` |
 | `CORS_ORIGINS` | Origin frontend |
-
+| `DATABASE_URL` | `sqlite:///./scc.db` hoặc Postgres |
+| `JWT_SECRET` | Secret ký access token |
+| `BILLING_MOCK` | `true` → `/billing/mock-pay` (dev) |
+| `EMAIL_*` / `STRIPE_*` | Stub / placeholder |
 ---
 
 ## 8. Hạn chế và hướng mở rộng

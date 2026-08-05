@@ -83,12 +83,17 @@ Hardware: RTX 3050 Laptop 4GB · CUDA · Python 3.12 (`.venv-ml`)
 .\.venv-ml\Scripts\python.exe ml\datasets\build_fix_sft.py --n-per-template 14 --fix-repeat 3
 .\.venv-ml\Scripts\python.exe ml\training\train_codet5_lora.py --data ml\datasets\processed\sft_fix.jsonl --epochs 4 --tasks fix,explain --lora-r 16
 .\.venv-ml\Scripts\python.exe ml\eval\bench_compare.py
-# → ml/eval/reports/bench_compare.md
+# soft-match trên sft_pairs = LEGACY only
+.\.venv-ml\Scripts\python.exe ml\eval\bench_multilingual.py
+# → ml/eval/reports/bench_multilingual.md  (P/R/F1/FPR từng ngôn ngữ)
+.\.venv-ml\Scripts\python.exe ml\datasets\build_heldout_fix_eval.py
+.\.venv-ml\Scripts\python.exe ml\eval\eval_fix_heldout.py --provider local
+# → ml/eval/reports/fix_heldout_local.md  (Exact / CodeBLEU / Unit / Security / Functional)
 ```
 
-CodeT5 **fix soft-match ~0.67** (n=60; trước ~0.05). Product: CodeT5 beam-4 + heuristic fallback nếu output kém.
+Chi tiết protocol: [`ml/eval/FIX_EVAL.md`](../ml/eval/FIX_EVAL.md) · Human rubric: [`ml/eval/human_eval_rubric.md`](../ml/eval/human_eval_rubric.md)
 
-Bảng detect (multilingual pairs + hardneg): Hybrid ưu tiên Recall sản phẩm.
+**Không** dùng soft-match trên `sft_pairs` làm claim chính về khả năng sửa code chưa từng thấy.
 
 **Vấn đề:** anti-FP threshold (P≥0.9) → Recall ~8–13% nếu dùng để lọc rule.  
 **Fix product:**

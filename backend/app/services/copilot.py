@@ -155,7 +155,15 @@ class CopilotService:
         return kept, meta
 
     def _ml_discover(self, code: str, language: str, filename: Optional[str], existing: list[Vulnerability]) -> list[Vulnerability]:
-        """Sliding-window ML discovery — optional; precision-oriented threshold."""
+        """Sliding-window ML discovery — optional; precision-oriented threshold.
+
+        CWE/OWASP are **not** taken from CodeBERT (binary model). We either:
+          - assign a soft pattern-based CWE hint when confidence is high enough, or
+          - emit CWE-Unknown / Unclassified.
+        Findings always use detector=`ml-discovery`.
+        """
+        from app.services.cwe_hint import classify_cwe_hint, format_ml_discovery_message
+
         det = self._get_detector()
         if not det or det is False or not getattr(det, "available", False):
             return []
@@ -191,23 +199,24 @@ class CopilotService:
             if any(abs(sl - a) < 8 for a, _ in occupied):
                 continue
             occupied.add((sl, el))
+            hint = classify_cwe_hint(chunk, ml_probability=float(prob))
             vid = hashlib.sha1(f"ML-{filename}-{sl}-{chunk[:80]}".encode()).hexdigest()[:12]
             found.append(
                 Vulnerability(
                     id=vid,
-                    rule_id="ML-CONTEXT-001",
-                    title="ML-detected potential vulnerability",
+                    rule_id="ML-DISCOVERY",
+                    title=hint.title,
                     severity=Severity.HIGH if prob >= 0.85 else Severity.MEDIUM,
-                    cwe="CWE-1035",
-                    owasp="A06:2021-Vulnerable and Outdated Components",
+                    cwe=hint.cwe,
+                    owasp=hint.owasp,
                     language=language,
                     file=filename,
                     start_line=sl,
                     end_line=el,
-                    snippet="\n".join(lines[start:min(end, start + 8)]),
-                    message=f"CodeBERT scored this region as vulnerable (p={prob:.2f}). Review for injection/unsafe APIs.",
+                    snippet="\n".join(lines[start : min(end, start + 8)]),
+                    message=format_ml_discovery_message(float(prob), hint),
                     confidence=float(prob),
-                    detector="ml",
+                    detector="ml-discovery",
                 )
             )
             if len(found) >= 5:
@@ -301,7 +310,9 @@ class CopilotService:
                     )
                 )
                 if not req.ml_discovery:
-                    one.vulnerabilities = [v for v in one.vulnerabilities if v.detector != "ml"]
+                    one.vulnerabilities = [
+                        v for v in one.vulnerabilities if v.detector not in ("ml", "ml-discovery")
+                    ]
                     one.vulnerability_count = len(one.vulnerabilities)
                     # recompute severity after filter
                     one.severity_counts = dict(Counter(v.severity.value for v in one.vulnerabilities))

@@ -52,7 +52,7 @@ class Vulnerability(BaseModel):
     snippet: str
     message: str
     confidence: float = Field(ge=0.0, le=1.0, default=0.85)
-    detector: str = "rule"  # rule | ml | hybrid
+    detector: str = "rule"  # rule | hybrid | ml-discovery
 
 
 class Explanation(BaseModel):

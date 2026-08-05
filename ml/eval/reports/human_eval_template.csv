@@ -1,0 +1,3 @@
+sample_id,rater_id,provider,correctness_1to5,safety_1to5,readability_1to5,would_merge_yn,compiles_yn,behavior_ok_yn,cwe_removed_yn,new_sink_yn,notes
+ho-py-sqli-order-table,R1,local,,,,,Y/N,Y/N,Y/N,Y/N,Y/N,
+ho-py-cmdi-backup,R1,local,,,,,Y/N,Y/N,Y/N,Y/N,Y/N,

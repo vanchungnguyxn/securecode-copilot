@@ -232,46 +232,77 @@ def fig_confusion_hybrid():
 
 
 def fig_codet5_fix():
-    bench = load_json(ROOT / "ml" / "eval" / "reports" / "bench_compare.json")
-    after = float(bench["codet5_fix"]["fix_soft_match"])
-    n = int(bench["codet5_fix"]["n"])
-    labels = ["Lần đầu\nmixed SFT", "Fix-heavy\n(curated)", "+ CVEFixes\nthật"]
-    vals = [0.05, 0.533, after]
-    colors = [C["bandit"], C["ml"], C["hybrid"]]
+    """Held-out fix quality — primary unit/security; soft-match only as weak reference."""
+    local_path = ROOT / "ml" / "eval" / "reports" / "fix_heldout_local.json"
+    oracle_path = ROOT / "ml" / "eval" / "reports" / "fix_heldout_oracle.json"
+    if not local_path.exists():
+        # Fallback: legacy soft-match progress if held-out not run yet
+        bench = load_json(ROOT / "ml" / "eval" / "reports" / "bench_compare.json")
+        after = float(bench["codet5_fix"]["fix_soft_match"])
+        n = int(bench["codet5_fix"]["n"])
+        fig, ax = plt.subplots(figsize=(8.6, 5.4))
+        fig.subplots_adjust(left=0.12, right=0.96, top=0.78, bottom=0.16)
+        _header(fig, "Gợi ý sửa (legacy soft-match)", f"Chưa có held-out JSON — soft-match n={n}")
+        bars = ax.bar([0], [after], color=C["hybrid"], width=0.4)
+        ax.set_ylim(0, 1)
+        _bar_labels(ax, bars, [after], fmt=lambda v: f"{v*100:.1f}%")
+        _clean(ax)
+        return _save(fig, "04_codet5_fix_softmatch.png", "Chạy eval_fix_heldout.py rồi regenerate")
 
-    fig, ax = plt.subplots(figsize=(8.6, 5.4))
-    fig.subplots_adjust(left=0.12, right=0.96, top=0.78, bottom=0.16)
+    local = load_json(local_path)
+    agg = local["aggregate"]["curated_executable"]
+    n = int(agg["n"])
+
+    # Primary metrics (left) + soft-match legacy as hatched weak bar (right group cue)
+    metric_defs = [
+        ("Exact", agg["exact_match"], C["bandit"], False),
+        ("CodeBLEU", agg["codebleu_mean"], C["rule"], False),
+        ("Unit pass", agg["unit_pass"], C["ml"], False),
+        ("Security", agg["security_pass"], C["hybrid"], False),
+        ("Functional", agg["functional_pass"], C["good"], False),
+        ("Soft-match\n(legacy, yếu)", agg["soft_match_legacy"], C["med"], True),
+    ]
+
+    fig, ax = plt.subplots(figsize=(9.4, 5.6))
+    fig.subplots_adjust(left=0.10, right=0.97, top=0.76, bottom=0.18)
     _header(
         fig,
-        "Gợi ý sửa mã (CodeT5) ngày càng khớp hơn",
-        f"Soft-match = đoạn sửa trùng từ khóa với bản vá chuẩn (eval n={n}).",
+        "Chất lượng fix trên bộ held-out (không trùng train)",
+        f"CodeT5-LoRA local · n={n} · ưu tiên Unit / Security / Functional — không dùng soft-match làm claim chính.",
     )
 
-    x = np.arange(len(vals))
-    bars = ax.bar(x, vals, color=colors, width=0.52, zorder=3)
-    ax.plot(x, vals, color=C["ink"], lw=1.8, marker="o", markersize=8, zorder=4)
+    x = np.arange(len(metric_defs))
+    vals = [m[1] for m in metric_defs]
+    colors = [m[2] for m in metric_defs]
+    bars = ax.bar(x, vals, color=colors, width=0.62, zorder=3)
+    for bar, (_name, _v, _c, weak) in zip(bars, metric_defs):
+        if weak:
+            bar.set_hatch("//")
+            bar.set_alpha(0.55)
+            bar.set_edgecolor(C["muted"])
+            bar.set_linewidth(1.0)
+
     ax.set_xticks(x)
-    ax.set_xticklabels(labels, fontsize=10)
-    ax.set_ylim(0, 0.95)
-    ax.set_ylabel("Tỷ lệ soft-match")
-    _bar_labels(ax, bars, vals, fmt=lambda v: f"{v*100:.1f}%", y_pad=0.04, fontsize=11)
+    ax.set_xticklabels([m[0] for m in metric_defs], fontsize=9.5)
+    ax.set_ylim(0, 1.08)
+    ax.set_ylabel("Tỷ lệ / điểm")
+    _bar_labels(ax, bars, vals, fmt=lambda v: f"{v*100:.1f}%", y_pad=0.035, fontsize=10)
     _clean(ax)
 
-    ax.annotate(
-        f"+{(after - 0.533)*100:.0f} điểm nhờ CVEFixes",
-        xy=(2, after),
-        xytext=(0.55, 0.78),
-        textcoords="data",
-        arrowprops=dict(arrowstyle="->", color=C["ink"], lw=1.2),
-        fontsize=10,
-        color=C["ink"],
-        bbox=dict(boxstyle="round,pad=0.4", facecolor="white", edgecolor=C["grid"], linewidth=1),
+    # Ceiling note from oracle harness
+    note = (
+        f"Soft-match legacy {agg['soft_match_legacy']*100:.0f}% trông cao nhưng Unit chỉ "
+        f"{agg['unit_pass']*100:.0f}% / Security {agg['security_pass']*100:.0f}% — metric yếu."
     )
+    if oracle_path.exists():
+        o = load_json(oracle_path)["aggregate"]["curated_executable"]
+        note += f"  ·  Oracle gold ≈ Unit/Security {o['unit_pass']*100:.0f}% (ceiling harness)."
+    fig.text(0.5, 0.055, note, ha="center", fontsize=8.5, color=C["muted"])
 
     return _save(
         fig,
         "04_codet5_fix_softmatch.png",
-        "Priors: 5.0% early · 53.3% trước CVEFixes · hiện tại từ bench_compare.json",
+        "Nguồn: fix_heldout_local.json (curated_executable) · xem FIX_EVAL.md",
     )
 
 
@@ -705,7 +736,7 @@ def write_caption_index(paths: List[Path]) -> None:
         "| `01_hybrid_vs_rule_ml_multilingual.png` | SCC Rule / Hybrid / ML phát hiện lỗ hổng ra sao? |",
         "| `02_detector_devign_mix.png` | Trên mã C thật (Devign) thì sao? |",
         "| `03_hybrid_confusion_multilingual.png` | Hybrid đúng / sai ở đâu? |",
-        "| `04_codet5_fix_softmatch.png` | Gợi ý sửa mã tiến bộ thế nào (+CVEFixes)? |",
+        "| `04_codet5_fix_softmatch.png` | Fix held-out: Exact / CodeBLEU / Unit / Security (soft-match chỉ tham chiếu)? |",
         "| `05_dataset_composition.png` | Train bằng dữ liệu gì? |",
         "| `06_sft_task_mix.png` | CodeT5 học fix / explain / từ đâu? |",
         "| `07_demo_repo_scan_counts.png` | Quét repo demo thấy gì? |",

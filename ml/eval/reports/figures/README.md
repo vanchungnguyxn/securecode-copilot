@@ -7,7 +7,7 @@ Mỗi ảnh trả lời **một câu hỏi** — layout đã chỉnh để trán
 | `01_hybrid_vs_rule_ml_multilingual.png` | SCC Rule / Hybrid / ML phát hiện lỗ hổng ra sao? |
 | `02_detector_devign_mix.png` | Trên mã C thật (Devign) thì sao? |
 | `03_hybrid_confusion_multilingual.png` | Hybrid đúng / sai ở đâu? |
-| `04_codet5_fix_softmatch.png` | Gợi ý sửa mã tiến bộ thế nào (+CVEFixes)? |
+| `04_codet5_fix_softmatch.png` | Fix held-out: Exact / CodeBLEU / Unit / Security (soft-match chỉ tham chiếu)? |
 | `05_dataset_composition.png` | Train bằng dữ liệu gì? |
 | `06_sft_task_mix.png` | CodeT5 học fix / explain / từ đâu? |
 | `07_demo_repo_scan_counts.png` | Quét repo demo thấy gì? |

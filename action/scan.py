@@ -128,7 +128,11 @@ async def scan_hybrid(paths: list[str], include_ml_discovery: bool = True) -> li
             )
         )
         if not include_ml_discovery:
-            result.vulnerabilities = [v for v in result.vulnerabilities if getattr(v, "detector", None) != "ml"]
+            result.vulnerabilities = [
+                v
+                for v in result.vulnerabilities
+                if getattr(v, "detector", None) not in ("ml", "ml-discovery")
+            ]
         for v in result.vulnerabilities:
             d = to_dump(v)
             all_findings.append(d)
