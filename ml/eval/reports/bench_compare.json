@@ -1,0 +1,118 @@
+{
+  "detector_test": {
+    "dataset": "detector_test_devign_mix",
+    "n": 435,
+    "rule_only": {
+      "precision": 0.7346938775510204,
+      "recall": 0.1651376146788991,
+      "f1": 0.2696629213483146,
+      "fpr": 0.059907834101382486,
+      "tp": 36,
+      "fp": 13,
+      "tn": 204,
+      "fn": 182,
+      "support_pos": 218,
+      "support_neg": 217
+    },
+    "ml_only": {
+      "precision": 0.7636363636363637,
+      "recall": 0.1926605504587156,
+      "f1": 0.3076923076923077,
+      "fpr": 0.059907834101382486,
+      "tp": 42,
+      "fp": 13,
+      "tn": 204,
+      "fn": 176,
+      "support_pos": 218,
+      "support_neg": 217
+    },
+    "hybrid": {
+      "precision": 0.7291666666666666,
+      "recall": 0.3211009174311927,
+      "f1": 0.445859872611465,
+      "fpr": 0.11981566820276497,
+      "tp": 70,
+      "fp": 26,
+      "tn": 191,
+      "fn": 148,
+      "support_pos": 218,
+      "support_neg": 217
+    },
+    "hybrid_recall": {
+      "precision": 0.7291666666666666,
+      "recall": 0.3211009174311927,
+      "f1": 0.445859872611465,
+      "fpr": 0.11981566820276497,
+      "tp": 70,
+      "fp": 26,
+      "tn": 191,
+      "fn": 148,
+      "support_pos": 218,
+      "support_neg": 217
+    },
+    "ml_threshold": 0.8480307459831238,
+    "ml_threshold_anti_fp": 0.8480307459831238,
+    "safe_cutoff": 0.45
+  },
+  "multilingual_pairs": {
+    "dataset": "sft_pairs_plus_hardneg",
+    "n": 971,
+    "rule_only": {
+      "precision": 0.8802395209580839,
+      "recall": 0.930379746835443,
+      "f1": 0.9046153846153846,
+      "fpr": 0.12072434607645875,
+      "tp": 441,
+      "fp": 60,
+      "tn": 437,
+      "fn": 33,
+      "support_pos": 474,
+      "support_neg": 497
+    },
+    "ml_only": {
+      "precision": 0.5,
+      "recall": 0.008438818565400843,
+      "f1": 0.016597510373443983,
+      "fpr": 0.008048289738430584,
+      "tp": 4,
+      "fp": 4,
+      "tn": 493,
+      "fn": 470,
+      "support_pos": 474,
+      "support_neg": 497
+    },
+    "hybrid": {
+      "precision": 0.8732673267326733,
+      "recall": 0.930379746835443,
+      "f1": 0.9009193054136875,
+      "fpr": 0.12877263581488935,
+      "tp": 441,
+      "fp": 64,
+      "tn": 433,
+      "fn": 33,
+      "support_pos": 474,
+      "support_neg": 497
+    },
+    "hybrid_recall": {
+      "precision": 0.8732673267326733,
+      "recall": 0.930379746835443,
+      "f1": 0.9009193054136875,
+      "fpr": 0.12877263581488935,
+      "tp": 441,
+      "fp": 64,
+      "tn": 433,
+      "fn": 33,
+      "support_pos": 474,
+      "support_neg": 497
+    },
+    "ml_threshold": 0.8480307459831238,
+    "ml_threshold_anti_fp": 0.8480307459831238,
+    "safe_cutoff": 0.45
+  },
+  "codet5_fix": {
+    "available": true,
+    "fix_soft_match": 0.6333333333333333,
+    "fix_token_overlap_hits": 18,
+    "n": 60
+  }
+}

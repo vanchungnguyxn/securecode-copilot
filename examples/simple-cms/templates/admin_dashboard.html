@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Admin</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+</head>
+<body class="admin">
+  <header class="site-header">
+    <span class="brand">Admin · {{ username }}</span>
+    <nav>
+      <a href="{{ url_for('home') }}">Xem site</a>
+      <a href="{{ url_for('admin_logout') }}">Đăng xuất</a>
+    </nav>
+  </header>
+  <main class="panel wide">
+    <h1>Trang có thể sửa</h1>
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}<ul class="flash">{% for m in messages %}<li>{{ m }}</li>{% endfor %}</ul>{% endif %}
+    {% endwith %}
+    <ul class="page-list">
+      {% for p in pages %}
+      <li>
+        <strong>{{ p.title }}</strong>
+        <span class="muted">/{{ p.slug }}</span>
+        <a href="{{ url_for('admin_edit', slug=p.slug) }}">Sửa</a>
+      </li>
+      {% endfor %}
+    </ul>
+  </main>
+</body>
+</html>

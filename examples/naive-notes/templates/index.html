@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <title>MyNotes</title>
+  <style>
+    body { font-family: Georgia, serif; max-width: 640px; margin: 2rem auto; padding: 0 1rem; background: #f7f3ee; color: #1a1a1a; }
+    header { display: flex; justify-content: space-between; align-items: baseline; }
+    article { border-top: 1px solid #cfc6b8; padding: 1rem 0; }
+    textarea, input, button { width: 100%; margin: 0.35rem 0; padding: 0.5rem; box-sizing: border-box; }
+    a { color: #2c5f4a; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Xin chào, {{ username }}</h1>
+    <a href="{{ url_for('logout') }}">Đăng xuất</a>
+  </header>
+
+  <section>
+    <h2>Ghi chú mới</h2>
+    <form method="post" action="{{ url_for('new_note') }}">
+      <input name="title" placeholder="Tiêu đề" required />
+      <textarea name="body" rows="4" placeholder="Nội dung..." required></textarea>
+      <button type="submit">Lưu</button>
+    </form>
+  </section>
+
+  <section>
+    <h2>Danh sách</h2>
+    {% for n in notes %}
+    <article>
+      <h3>{{ n.title }}</h3>
+      <p>{{ n.body }}</p>
+      <form method="post" action="{{ url_for('delete_note', note_id=n.id) }}">
+        <button type="submit">Xóa</button>
+      </form>
+    </article>
+    {% else %}
+    <p>Chưa có ghi chú nào.</p>
+    {% endfor %}
+  </section>
+</body>
+</html>

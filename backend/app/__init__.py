@@ -1,0 +1,1 @@
+"""SecureCode Copilot backend package."""

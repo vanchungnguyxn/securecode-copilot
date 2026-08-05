@@ -1,0 +1,23 @@
+{
+  "acc-shop": {
+    "critical": 9,
+    "high": 12,
+    "medium": 1
+  },
+  "vibe-auth": {
+    "high": 11,
+    "medium": 3,
+    "critical": 2
+  },
+  "naive-notes": {
+    "high": 3,
+    "medium": 2
+  },
+  "lang-extra": {
+    "critical": 9,
+    "high": 5
+  },
+  "simple-cms": {
+    "medium": 1
+  }
+}

@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{{ event.title }} · TicketChannel</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+</head>
+<body>
+  <header>
+    <a class="logo" href="{{ url_for('index') }}">TicketChannel</a>
+  </header>
+
+  {% with messages = get_flashed_messages() %}
+  {% if messages %}<div class="flash">{% for m in messages %}{{ m }}{% endfor %}</div>{% endif %}
+  {% endwith %}
+
+  <main class="narrow">
+    <h1>{{ event.title }}</h1>
+    <p class="meta">{{ event.venue }} · {{ event.event_date }}</p>
+    <p>
+      Giá:
+      {% if event.price == 0 %}Miễn phí{% else %}{{ '{:,.0f}'.format(event.price) }}đ / vé{% endif %}
+    </p>
+    <p>Còn lại: {{ event.seats_left }} ghế</p>
+
+    <h2>Đặt vé</h2>
+    <form method="post" action="{{ url_for('book', event_id=event.id) }}">
+      <label>Họ tên <input name="name" required /></label>
+      <label>Email <input name="email" type="email" required /></label>
+      <label>Số lượng <input name="qty" type="number" min="1" max="10" value="1" required /></label>
+      <button type="submit">Xác nhận đặt</button>
+    </form>
+  </main>
+</body>
+</html>

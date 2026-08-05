@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Admin đăng nhập</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+</head>
+<body class="admin">
+  <main class="panel">
+    <h1>Đăng nhập admin</h1>
+    {% if error %}<p class="err">{{ error }}</p>{% endif %}
+    <form method="post">
+      <label>Username <input name="username" required autocomplete="username" /></label>
+      <label>Password <input name="password" type="password" required autocomplete="current-password" /></label>
+      <button type="submit">Vào quản trị</button>
+    </form>
+    <p class="muted"><a href="{{ url_for('home') }}">← Về trang chủ</a></p>
+  </main>
+</body>
+</html>

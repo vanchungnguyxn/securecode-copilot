@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sửa · {{ page.slug }}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+</head>
+<body class="admin">
+  <header class="site-header">
+    <span class="brand">Sửa trang /{{ page.slug }}</span>
+    <nav>
+      <a href="{{ url_for('admin_dashboard') }}">Danh sách</a>
+      <a href="{{ url_for('admin_logout') }}">Đăng xuất</a>
+    </nav>
+  </header>
+  <main class="panel wide">
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}<ul class="flash">{% for m in messages %}<li>{{ m }}</li>{% endfor %}</ul>{% endif %}
+    {% endwith %}
+    <form method="post" class="edit-form">
+      <label>Tiêu đề <input name="title" value="{{ page.title }}" required /></label>
+      <label>Nội dung
+        <textarea name="body" rows="10" required>{{ page.body }}</textarea>
+      </label>
+      <button type="submit">Lưu</button>
+    </form>
+  </main>
+</body>
+</html>

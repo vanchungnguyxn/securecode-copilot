@@ -1,0 +1,95 @@
+name: SecureCode Copilot CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      scan_mode:
+        description: "CI scan mode (rule | hybrid)"
+        required: false
+        default: rule
+        type: choice
+        options:
+          - rule
+          - hybrid
+
+jobs:
+  backend-tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: pip install -r requirements.txt
+      - name: Test
+        run: pytest -q
+
+  security-scan-rule:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r backend/requirements.txt
+      - name: Rule scan examples
+        run: |
+          python action/scan.py examples/acc-shop examples/vibe-auth examples/lang-extra \
+            --mode rule --fail-on critical \
+            --json-out ci-rule-scan.json --sarif ci-rule-scan.sarif || true
+          python -c "import json; d=json.load(open('ci-rule-scan.json')); print('findings', len(d)); assert len(d)>0"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: securecode-rule-sarif
+          path: |
+            ci-rule-scan.sarif
+            ci-rule-scan.json
+
+  # Hybrid uses fine-tuned CodeBERT when checkpoint is present (local/self-hosted
+  # or restored cache). On plain GitHub runners without checkpoints → auto fallback to rule.
+  security-scan-hybrid:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.scan_mode == 'hybrid'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install backend + ML (CPU)
+        run: |
+          pip install -r backend/requirements.txt
+          pip install -r ml/requirements-ml.txt
+      - name: Hybrid scan (needs ml/inference/checkpoints)
+        run: |
+          python action/scan.py examples/acc-shop examples/naive-notes \
+            --mode hybrid --fail-on critical \
+            --json-out ci-hybrid-scan.json --sarif ci-hybrid-scan.sarif || true
+          python -c "import json; d=json.load(open('ci-hybrid-scan.json')); print('findings', len(d)); assert len(d)>0"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: securecode-hybrid-sarif
+          path: |
+            ci-hybrid-scan.sarif
+            ci-hybrid-scan.json
+
+  frontend-build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm install
+      - run: npm run build

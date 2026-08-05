@@ -1,0 +1,64 @@
+name: "SecureCode Copilot Scan"
+description: "Scan repository source for security vulnerabilities (rule or hybrid CodeBERT)"
+author: "SecureCode Copilot"
+
+inputs:
+  paths:
+    description: "Paths to scan (space-separated)"
+    required: false
+    default: "."
+  fail-on:
+    description: "Fail if findings at or above this severity (critical|high|medium|low)"
+    required: false
+    default: "high"
+  mode:
+    description: "rule (fast) or hybrid (fine-tuned CodeBERT when checkpoint present)"
+    required: false
+    default: "rule"
+  python-version:
+    description: "Python version"
+    required: false
+    default: "3.11"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install backend deps
+      shell: bash
+      working-directory: ${{ github.action_path }}/..
+      run: pip install -r backend/requirements.txt
+
+    - name: Install ML deps (hybrid only)
+      if: inputs.mode == 'hybrid'
+      shell: bash
+      working-directory: ${{ github.action_path }}/..
+      run: |
+        if [ -f ml/requirements-ml.txt ]; then
+          pip install -r ml/requirements-ml.txt
+        else
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install transformers peft accelerate
+        fi
+
+    - name: Run SecureCode Copilot scan
+      shell: bash
+      run: |
+        python "${{ github.action_path }}/scan.py" ${{ inputs.paths }} \
+          --mode "${{ inputs.mode }}" \
+          --fail-on "${{ inputs.fail-on }}" \
+          --sarif securecode-results.sarif \
+          --json-out securecode-results.json
+
+    - name: Upload SARIF
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: securecode-sarif
+        path: |
+          securecode-results.sarif
+          securecode-results.json

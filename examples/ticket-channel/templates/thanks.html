@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Đặt vé thành công</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+</head>
+<body>
+  <header>
+    <a class="logo" href="{{ url_for('index') }}">TicketChannel</a>
+  </header>
+  <main class="narrow">
+    <h1>Cảm ơn bạn đã đặt vé</h1>
+    <p>Email: {{ email }}</p>
+    <h2>Đơn gần đây của bạn</h2>
+    <ul>
+      {% for b in bookings %}
+      <li>#{{ b.id }} — {{ b.title }} × {{ b.qty }} ({{ b.event_date }} · {{ b.venue }})</li>
+      {% else %}
+      <li>Chưa có đơn nào.</li>
+      {% endfor %}
+    </ul>
+    <p><a href="{{ url_for('index') }}">← Về danh sách sự kiện</a></p>
+  </main>
+</body>
+</html>
