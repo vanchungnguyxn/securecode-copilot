@@ -25,6 +25,8 @@ from typing import Any, Dict, List, Set
 HERE = Path(__file__).resolve().parent
 PROC = HERE / "processed"
 
+from heldout_executable_extra import EXTRA_EXECUTABLE  # noqa: E402
+
 
 def norm_ws(s: str) -> str:
     return re.sub(r"\s+", "", (s or "").strip())
@@ -711,6 +713,9 @@ CURATED_EXECUTABLE += [
     },
 ]
 
+# Expand executable held-out well beyond the original ~16 vignettes
+CURATED_EXECUTABLE += EXTRA_EXECUTABLE
+
 
 def curated_rows() -> List[Dict[str, Any]]:
     rows = []
@@ -772,12 +777,34 @@ def cvefixes_heldout(train_fps: Set[str], limit: int = 80) -> List[Dict[str, Any
                 "has_compile": (p.get("language") or "") in {"python", "javascript"},
             }
         )
+    reserve_unique = sorted(set(reserve_ids))
     (PROC / "fix_eval_cve_reserve_ids.json").write_text(
         json.dumps(
             {
-                "n": len(reserve_ids),
-                "ids": sorted(set(reserve_ids)),
+                "n": len(reserve_unique),
+                "ids": reserve_unique,
                 "policy": "sha1(id)%5==0 — exclude these from future sft_fix merges before retrain",
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    # Materialize the next-retrain holdout set (may overlap current sft_fix until rebuild excludes them)
+    holdout_pairs = []
+    for p in load_jsonl(PROC / "cvefixes_pairs.jsonl"):
+        pid = str(p.get("id") or p.get("cve_id") or "")
+        if pid in set(reserve_unique):
+            holdout_pairs.append(p)
+    (PROC / "cvefixes_holdout_next_retrain.jsonl").write_text(
+        "\n".join(json.dumps(p, ensure_ascii=False) for p in holdout_pairs) + ("\n" if holdout_pairs else ""),
+        encoding="utf-8",
+    )
+    (PROC / "cvefixes_holdout_next_retrain_meta.json").write_text(
+        json.dumps(
+            {
+                "n": len(holdout_pairs),
+                "policy": "20% sha1 reserve; exclude via ingest_cvefixes --exclude-holdout before next CodeT5 retrain",
+                "ids_file": str(PROC / "fix_eval_cve_reserve_ids.json"),
             },
             indent=2,
         ),
@@ -831,8 +858,8 @@ def main() -> None:
         "cve_reserve_ids_file": str(PROC / "fix_eval_cve_reserve_ids.json"),
         "note": (
             "Primary unbiased set = curated_executable (fingerprints not in sft_fix). "
-            "Current sft_fix already merged almost all CVEFixes — cvefixes_disjoint may be empty "
-            "until a retrain excludes fix_eval_cve_reserve_ids.json. "
+            "CVEFixes next-retrain reserve lives in cvefixes_holdout_next_retrain.jsonl; "
+            "rebuild_sft_exclude_holdout.py makes those fingerprints disjoint. "
             "Soft-match on sft_pairs is NOT a valid generalization claim."
         ),
         "out": str(args.out),

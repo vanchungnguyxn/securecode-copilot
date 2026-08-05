@@ -45,7 +45,20 @@ Human protocol: [`human_eval_rubric.md`](human_eval_rubric.md)
 
 ## Dataset composition
 
-- `curated_executable` — Python vignettes with unit + security + functional tests (primary).
-- `cvefixes_disjoint` — CVEFixes pairs absent from training fingerprints (Exact / CodeBLEU / compile).
+- `curated_executable` — Python vignettes with unit + security + functional tests (**primary**; target n≥40).
+- `cvefixes_disjoint` — CVEFixes pairs absent from **current** `sft_fix` fingerprints (Exact / CodeBLEU).
+- `cvefixes_holdout_next_retrain.jsonl` — ~20% deterministic reserve; **exclude before next retrain** via `rebuild_sft_exclude_holdout.py` / `ingest_cvefixes --exclude-holdout`.
 
-Metadata: `ml/datasets/processed/fix_eval_heldout_meta.json`
+Leakage check:
+
+```powershell
+.\.venv-ml\Scripts\python.exe ml\eval\check_fix_leakage.py
+# → ml/eval/reports/leakage_check.md
+```
+
+## Next retrain (CVEFixes holdout)
+
+1. Tracked reserve ids: `ml/datasets/cvefixes_holdout_reserve_ids.json`
+2. `python ml/datasets/rebuild_sft_exclude_holdout.py` — rebuild `sft_fix.jsonl` without reserved pairs (id + fingerprint)
+3. Train CodeT5 on the new `sft_fix.jsonl`
+4. `build_heldout_fix_eval.py` + `check_fix_leakage.py` (must pass `pass_cve_next_excluded_from_sft`)

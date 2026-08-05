@@ -169,6 +169,13 @@ def main() -> None:
         help="comma languages or empty for all mapped",
     )
     ap.add_argument("--merge-sft-fix", action="store_true")
+    ap.add_argument(
+        "--exclude-holdout",
+        action="store_true",
+        default=True,
+        help="When merging into sft_fix, skip ids in fix_eval_cve_reserve_ids.json (next-retrain holdout)",
+    )
+    ap.add_argument("--include-holdout-in-train", action="store_true", help="Legacy: do not exclude reserve ids")
     ap.add_argument("--seed", type=int, default=42)
     args = ap.parse_args()
 
@@ -193,6 +200,13 @@ def main() -> None:
         import subprocess
         import sys
 
+        exclude: set[str] = set()
+        holdout_ids = OUT_DIR / "fix_eval_cve_reserve_ids.json"
+        exclude_holdout = args.exclude_holdout and not args.include_holdout_in_train
+        if exclude_holdout and holdout_ids.exists():
+            exclude = set(json.loads(holdout_ids.read_text(encoding="utf-8")).get("ids") or [])
+            print(f"[3/3] excluding {len(exclude)} reserved CVEFixes holdout ids from SFT merge", flush=True)
+
         print("[3/3] rebuild curated sft_fix + merge CVEFixes...", flush=True)
         subprocess.check_call(
             [
@@ -209,7 +223,17 @@ def main() -> None:
         rows = []
         if sft_path.exists():
             rows = [json.loads(l) for l in sft_path.read_text(encoding="utf-8").splitlines() if l.strip()]
-        extra = [to_fix_row(p["language"], p["cwe"], p["vulnerable_code"], p["secure_code"]) for p in pairs]
+        kept_pairs = []
+        skipped = 0
+        for p in pairs:
+            pid = str(p.get("id") or p.get("cve_id") or "")
+            if pid and pid in exclude:
+                skipped += 1
+                continue
+            kept_pairs.append(p)
+        extra = [
+            to_fix_row(p["language"], p["cwe"], p["vulnerable_code"], p["secure_code"]) for p in kept_pairs
+        ]
         # repeat CVEFixes once more for weight
         extra = extra + extra
         random.seed(args.seed)
@@ -220,13 +244,15 @@ def main() -> None:
                 f.write(json.dumps(r, ensure_ascii=False) + "\n")
         by_task = Counter(r.get("task") for r in merged)
         by_src = Counter(r.get("source", "curated") for r in merged)
-        print(
-            json.dumps(
-                {"sft_fix_n": len(merged), "by_task": dict(by_task), "by_source": dict(by_src)},
-                indent=2,
-            ),
-            flush=True,
-        )
+        meta_out = {
+            "sft_fix_n": len(merged),
+            "by_task": dict(by_task),
+            "by_source": dict(by_src),
+            "cvefixes_merged": len(kept_pairs),
+            "cvefixes_holdout_excluded": skipped,
+        }
+        (OUT_DIR / "sft_fix_meta.json").write_text(json.dumps(meta_out, indent=2), encoding="utf-8")
+        print(json.dumps(meta_out, indent=2), flush=True)
         print(f"[done] {sft_path}", flush=True)
 
 

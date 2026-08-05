@@ -21,7 +21,7 @@
 3. **CodeT5-LoRA** để sinh giải thích ngữ cảnh và gợi ý sửa,
 4. **Tích hợp CI/CD** qua GitHub Actions (SARIF gate + deploy GHCR/VPS).
 
-Hệ thống phục vụ mục tiêu đồ án tốt nghiệp: chứng minh pipeline *detect → explain → fix → gate CI* chạy được trên phần cứng phổ thông (RTX 3050 4GB).
+Hệ thống phục vụ mục tiêu đồ án tốt nghiệp: chứng minh pipeline *detect → explain → fix → gate CI → deploy CD* chạy được trên phần cứng phổ thông (RTX 3050 4GB).
 
 | Khía cạnh | Giá trị |
 |-----------|---------|
@@ -144,23 +144,36 @@ Bảng tóm tắt baseline (Python labeled pairs):
 
 Chi tiết: [`ml/eval/reports/baseline_compare.md`](ml/eval/reports/baseline_compare.md) · [`ml/eval/reports/bench_compare.md`](ml/eval/reports/bench_compare.md) · **[per-language multilingual](ml/eval/reports/bench_multilingual.md)**.
 
-### 4.4. CodeT5 — chất lượng gợi ý sửa
+### 4.4. CodeT5 — chất lượng gợi ý sửa (held-out)
 
-> **Lưu ý phương pháp:** số liệu soft-match (~63%, n≈60 trên `sft_pairs`) chỉ mang tính tham chiếu lịch sử — tiêu chí dễ đạt và dữ liệu gần phân họ train. **Không dùng làm claim chính.**
+**Claim chính (held-out, không trùng fingerprint train):** Exact · CodeBLEU · Compile · **Unit-test** · **Security-test** · Functional — chi tiết [`ml/eval/FIX_EVAL.md`](ml/eval/FIX_EVAL.md).
 
-Đánh giá khuyến nghị (held-out): Exact match · CodeBLEU · Compile · **Unit-test** · **Security-test** · Functional · Human rubric — xem [`ml/eval/FIX_EVAL.md`](ml/eval/FIX_EVAL.md).
+Số liệu minh họa checkpoint hiện tại (`fix_heldout_local`, curated executable **n=40**):
+
+| Metric | CodeT5-LoRA local | Oracle (ceiling) |
+|--------|-------------------|------------------|
+| Exact match | ~2.5% | 100% |
+| CodeBLEU (mean) | ~0.51 | 1.00 |
+| Unit-test pass | ~37.5% | 100% |
+| Security-test pass | ~10% | 100% |
+| Soft-match legacy | ~50% *(không dùng làm claim)* | 100% |
+
+CVEFixes holdout cho lần retrain tiếp theo: **157** pairs (`cvefixes_holdout_next_retrain.jsonl`); SFT file đã exclude id+fingerprint (`rebuild_sft_exclude_holdout.py`). Leakage check: [`ml/eval/reports/leakage_check.md`](ml/eval/reports/leakage_check.md).
+
+> Soft-match trên `sft_pairs` (~60%+) **không** phải kết quả chính — metric yếu và dễ trùng họ dữ liệu train.
 
 ```powershell
 .\.venv-ml\Scripts\python.exe ml\datasets\build_heldout_fix_eval.py
+.\.venv-ml\Scripts\python.exe ml\eval\check_fix_leakage.py
 .\.venv-ml\Scripts\python.exe ml\eval\eval_fix_heldout.py --provider local
 ```
 
 <p align="center">
-  <img src="ml/eval/reports/figures/04_codet5_fix_softmatch.png" alt="CodeT5 soft-match (legacy)" width="720"/>
+  <img src="ml/eval/reports/figures/04_codet5_fix_softmatch.png" alt="CodeT5 held-out fix metrics" width="720"/>
 </p>
 
 <p align="center">
-  <em>Hình 9. Soft-match legacy (để so sánh giai đoạn train) — bổ sung bằng held-out suite.</em>
+  <em>Hình 9. Held-out fix metrics (Unit/Security/Functional ưu tiên; soft-match chỉ cột phụ).</em>
 </p>
 
 ### 4.5. Bằng chứng quét repo demo
@@ -283,7 +296,9 @@ cd frontend && npm run build
 | `frontend-build` | `npm run build` |
 | `security-scan-hybrid` | Chỉ khi chạy tay (`workflow_dispatch`, mode `hybrid`) |
 
-**CD** — [`.github/workflows/cd.yml`](.github/workflows/cd.yml): build/push GHCR → deploy VPS (Compose) → smoke `/api/v1/health` → rollback. Chi tiết secrets & VPS: [`docs/CD.md`](docs/CD.md).
+Chạy local (khi GitHub Actions bị khoá billing): `powershell -File scripts/ci_local.ps1`
+
+**CD** — [`.github/workflows/cd.yml`](.github/workflows/cd.yml): build/push GHCR → deploy VPS (Compose) → smoke `/api/v1/health` → rollback. Chi tiết: [`docs/CD.md`](docs/CD.md). Staging local: `powershell -File scripts/staging_local.ps1` (mặc định http://127.0.0.1:18088).
 
 Composite action: [`action/`](action/). Repo demo: [vanchungnguyxn/securecode-copilot](https://github.com/vanchungnguyxn/securecode-copilot).
 
@@ -326,9 +341,11 @@ securecode-copilot/
 
 ## 8. Hạn chế và hướng mở rộng
 
-- CodeT5 trên 4GB VRAM dễ sinh lặp; hệ thống có gate chống degenerate và fallback heuristic theo rule (đặc biệt HARDCODE).  
-- Anti-FP làm giảm recall discovery; vì vậy product dựa **rule + hybrid filter**, không dựa ML-only.  
-- Hướng mở: dataset hard-negative theo từng CWE, retrain định kỳ, upload SARIF vào GitHub Code Scanning, bổ sung CD nếu cần.
+- CodeT5 trên 4GB VRAM dễ sinh lặp; hệ thống có gate chống degenerate và fallback heuristic theo rule.  
+- Anti-FP làm giảm recall discovery; product dựa **rule + hybrid filter**.  
+- Fix held-out (unit/security) còn thấp — cần retrain sau khi `rebuild_sft_exclude_holdout.py` loại CVEFixes reserve.  
+- **CD đã có** (GHCR + Compose/VPS, smoke, rollback) — xem [`docs/CD.md`](docs/CD.md). GitHub-hosted Actions cần tài khoản không bị khoá billing.  
+- Hướng mở: hard-negative theo CWE, upload SARIF vào GitHub Code Scanning, mở rộng executable fix eval đa ngôn ngữ.
 
 ---
 

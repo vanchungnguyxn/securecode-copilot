@@ -1,0 +1,20 @@
+{
+  "train_fix_fingerprints": 2165,
+  "curated_executable_n": 40,
+  "cvefixes_disjoint_in_heldout_n": 80,
+  "cvefixes_next_retrain_n": 157,
+  "hard_leakage": {
+    "curated_fingerprint_overlap_ids": [],
+    "cvefixes_disjoint_fingerprint_overlap_ids": [],
+    "cvefixes_next_retrain_still_in_sft_ids": [],
+    "cvefixes_next_retrain_still_in_sft_n": 0
+  },
+  "soft_grouping": {
+    "curated_near_dup_group_hits": [],
+    "n": 0,
+    "note": "Hits mean same lang|cwe|normalized-body-hash as some train fix; investigate if n>0"
+  },
+  "pass_curated_hard": true,
+  "pass_cve_disjoint_hard": true,
+  "pass_cve_next_excluded_from_sft": true
+}

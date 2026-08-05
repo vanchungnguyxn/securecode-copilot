@@ -1,0 +1,5 @@
+{
+  "n": 157,
+  "policy": "20% sha1 reserve; exclude via ingest_cvefixes --exclude-holdout before next CodeT5 retrain",
+  "ids_file": "D:\\securecode-copilot\\ml\\datasets\\processed\\fix_eval_cve_reserve_ids.json"
+}
